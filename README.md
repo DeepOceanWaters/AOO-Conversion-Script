@@ -4,10 +4,10 @@ A script to convert the LINUX/UNIX AOO build system (modules) to a Windows based
 
 #### How to use
 
-1. Enter module directory and delete the wntmsci12.pro directory.
+1. Enter module directory and delete the *wntmsci12.pro* directory.
 2. Enter the main directory (contains all modules).
-2. Run the vcprojGen.py script (format: python vcprojGen.py [moduleName]).
-3. Run the vcGen.py script (format: python vcGen.py [moduleName]).
+2. Run the vcprojGen.py script (format: ```python vcprojGen.py [moduleName]```).
+3. Run the vcGen.py script (format: ```python vcGen.py [moduleName]```).
 
 #### Manual Conversion
 1. Open CygWin
