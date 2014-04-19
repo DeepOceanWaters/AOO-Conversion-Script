@@ -26,17 +26,13 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <Import Project="..\AOOWin.props" />
+    <Import Project="..\AOOWin.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>true</LinkIncremental>
     <LibraryPath>..\solver\410\wntmsci12.pro\lib\;$(LibraryPath)</LibraryPath>
-    <IncludePath>^INCLUDE^</IncludePath>
 </PropertyGroup>
-  <Import Project="..\AOOWin.props" />
-  </ImportGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>wntmsci12.pro\lib\</OutDir>

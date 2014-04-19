@@ -3,7 +3,7 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <IncludePath>CHANGE ME;$(IncludePath)</IncludePath>
+    <IncludePath>C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC\Include;</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup />
   <ItemGroup />
