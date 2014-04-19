@@ -1,19 +1,28 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Release|Win32">
       <Configuration>Release</Configuration>
       <Platform>Win32</Platform>
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{^GUID^}</ProjectGuid>
+    <ProjectGuid>{E66D42B2-CD9E-403F-AC30-DB2BCC53A321}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>^PROJ_NAME^</RootNamespace>
+    <RootNamespace>exe_project_master</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>^CFG_TYPE^</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
@@ -21,23 +30,40 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>
     </LinkIncremental>
-    <OutDir>wntmsci12.pro\bin\</OutDir>
-    <IntDir>wntmsci12.pro\intermediate\^PROJ_NAME^\</IntDir>
-    <TargetName>^OUTPUT_FILE_NAME^</TargetName>
-    <ReferencePath>$(ReferencePath)</ReferencePath>
-    <IncludePath>^INCLUDE^</IncludePath>
+    <OutDir>^OUTPUT DIR^</OutDir>
+    <IntDir>^INTERMEDIATE DIR^</IntDir>
+    <TargetName>^PROJ NAME^</TargetName>
+    <ReferencePath>..\solver\410\wntmsci12.pro\lib\;$(ReferencePath)</ReferencePath>
     <IgnoreImportLibrary />
     <GenerateManifest />
+    <IncludePath>^INCLUDE^</IncludePath>
   </PropertyGroup>
-  <Import Project="..\AOOWin.props" />
-  </ImportGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>
@@ -112,7 +138,8 @@
       </AssemblerOutput>
       <AssemblerListingLocation>
       </AssemblerListingLocation>
-      <ObjectFileName>^OBJ_FILE_NAME^</ObjectFileName>
+      <ObjectFileName>
+      </ObjectFileName>
       <ProgramDataBaseFileName>
       </ProgramDataBaseFileName>
       <GenerateXMLDocumentationFiles>
@@ -135,7 +162,7 @@
       </OmitDefaultLibName>
       <ErrorReporting>
       </ErrorReporting>
-      <AdditionalOptions>^ADDITIONAL_OPTIONS^ %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>^COMMAND LINE %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -146,7 +173,7 @@
       </EnableCOMDATFolding>
       <OptimizeReferences>
       </OptimizeReferences>
-      <OutputFile>^LINK_OUT^</OutputFile>
+      <OutputFile>^OUTPUT FILE^</OutputFile>
       <ShowProgress>
       </ShowProgress>
       <SuppressStartupBanner>
@@ -165,10 +192,10 @@
       </EnableUAC>
       <UACExecutionLevel>
       </UACExecutionLevel>
-      <UACUIAccess></UACUIAccess>
+      <UACUIAccess>No (/uiccess='false')</UACUIAccess>
       <ProgramDatabaseFile>
       </ProgramDatabaseFile>
-      <GenerateMapFile>^BOOL_DO_MAP^</GenerateMapFile>
+      <GenerateMapFile>true</GenerateMapFile>
       <MapExports>
       </MapExports>
       <SwapRunFromCD>
@@ -203,9 +230,9 @@
       </CLRImageType>
       <LinkErrorReporting>
       </LinkErrorReporting>
-      <AdditionalOptions>^LINK_OPTIONS^ %(AdditionalOptions)</AdditionalOptions>
-<AdditionalLibraryDirectories>^LIBRARY_DIR^</AdditionalLibraryDirectories>
-    <MapFileName>^MAP_NAME^</MapFileName>
+      <AdditionalOptions>^LINKER COMMAND LINE^ %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalLibraryDirectories>^LIBRARY_DIR^</AdditionalLibraryDirectories>
+      <MapFileName>MAP_NAME</MapFileName>
     </Link>
     <ProjectReference>
       <LinkLibraryDependencies>
@@ -219,11 +246,11 @@
       <Command>^PREBUILD^</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>^POSTBUILD^</Command>
+      <Command>^POST BUILD^</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    ^BEGIN_CLCOMPILE^<ClCompile Include="^CLFILENAME^" />^END_CLCOMPILE^
+    <ClCompile Include="..\..\uncompr.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
