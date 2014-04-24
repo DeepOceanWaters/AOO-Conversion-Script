@@ -157,7 +157,8 @@ def parseOutputFile(fileName):
                         # Generally the compiling command includes the name
                         # of the directory that we are in, so we slice it off
                         # here
-                        fileNames.append(newFilePath[1])
+                        if (len(newFilePath) >= 2):
+                                fileNames.append(newFilePath[1])
 
                 # If we failed to find a 'Making' word then we are out of things
                 # to process
@@ -201,7 +202,7 @@ def parseOutputFile(fileName):
                                         cmd = cmd.replace(cmd[tmp_it:cmd.find(" ",tmp_it)],"")
                                 # COLIN: What is this doing? Checking if len(cmd) is >= skipCmd?
                                 for skipCmd in skipCommands:
-                                        if (cmd[0:len(skipCmd)]):
+                                        if (cmd[0:len(skipCmd)] == skipCmd):
                                                 doSkip = 1
                                                 break
                                 if (cmd != "" and doSkip == 0):
@@ -315,8 +316,11 @@ def parseOutputFile(fileName):
 
                 # Take off the last two slashes to get the deepest directory name
                 # (plus the first filename) and set the project name to that
-                prjName = fileNames[0].rsplit("/",2)
-                prjName = prjName[1]
+                if (len(fileNames) == 0):
+                        prjName = "fix_me"
+                else:
+                        prjName = fileNames[0].rsplit("/",2)
+                        prjName = prjName[1]
                 libPrjName = prjName
                 exePrjName = prjName
                 #print prjName
@@ -431,7 +435,7 @@ def addExtraDirs(arguments):
 
 def parseDLst(path):
         repStrs = [("%_DEST%","..\solver\\410\\" + buildFolder),("%_EXT%",""),("%__SRC%",buildFolder)]
-        copyStr = "xcopy \"^SRC^\" \"^DEST^\\\" /D /Y"
+        copyStr = "xcopy \"^SRC^\" \"^DEST^\\\" /D /Y /c"
         try:
                 d = open(path)
         except:
@@ -704,8 +708,6 @@ def findDependencies(args):
                                         prj_out = prj[2]
                                 #Check if found filename was the output of a previous
                                 #module
-                                print "Comparing"
-                                print f.strip(), prj_out.strip()
                                 if (f.strip() == prj_out.strip()):
                                         print "Dep added: " + prj_out
                                         deps.append(prj[1].strip())
