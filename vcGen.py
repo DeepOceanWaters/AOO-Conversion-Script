@@ -203,11 +203,13 @@ def parseOutputFile(fileName):
                                         libOut = fixPaths(libOut)
                                         print libOut
                                         cmd = cmd.replace(cmd[tmp_it:cmd.find(" ",tmp_it)],"")
-                                # COLIN: What is this doing? Checking if len(cmd) is >= skipCmd?
+                                #Actually lets just skip every command line argument for the linker
+                                #since it just consists of the obj files that should already be included
+                                #by Visual Studio
                                 for skipCmd in skipCommands:
-                                        if (cmd[0:len(skipCmd)] == skipCmd):
-                                                doSkip = 1
-                                                break
+                                        #if (cmd[0:len(skipCmd)] == skipCmd):
+                                        doSkip = 1
+                                        break
                                 if (cmd != "" and doSkip == 0):
                                         cmd = fixPaths(cmd)
                                         libArgs += cmd
@@ -517,7 +519,7 @@ def parseDLst(path):
         out.write(outputBuf)
         out.close()
         #Open the last file used and add the batch file to its post build events
-        patchLastVcProj()
+        #patchLastVcProj()
 
 def insert(original, new, pos):
         '''Inserts new inside original at pos.'''
@@ -664,7 +666,7 @@ def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,
                 doMap = "true"
         else:
                 doMap = ""
-        libraryPath = "..\\solver\\410\\wntmsci12.pro\\lib;wntmsci12.pro\lib"
+        libraryPath = "..\\solver\\410\\wntmsci12.pro\\lib;wntmsci12.pro\\lib;wntmsci12.pro\\slb"
         linkOut = "wntmsci12.pro\\bin\\"+ outputFile[outputFile.rfind("/")+1:]
         targetName = outputFile[max(outputFile.rfind("/"),outputFile.rfind("\\"))+1:outputFile.rfind(".")]
         targetNameWExt = outputFile[max(outputFile.rfind("/"),outputFile.rfind("\\"))+1:]
@@ -762,6 +764,40 @@ def isArg(arg):
         if arg[0].find(".") != -1:
                 return True
         return False
+
+def patchVCProjMake(prjName,isPostBuild,buildCmd,rebuildCmd,cleanCmd):
+        rootFile = "make_proj_master.vcxproj"
+        f = open(rootFile,"r")
+        guidStr = "^GUID^"
+        prjNameStr = "^PRJ_NAME^"
+        buildTypeStr = "^BUILD_TYPE^"
+        buildCmdStr = "^BUILD_CMD^"
+        rebuildCmdStr = "^REBUILD_CMD^"
+        cleanCmdStr = "^CLEAN_CMD^"
+        origFile = f.read()
+        moduleFileName = ""
+        if isPostBuild:
+                buildType = "deliver"
+        else:
+                buildType = "prebuild"
+        f.close()
+        if (isPostBuild):
+                moduleFileName = prjName+"/"+prjName+"_deliver.vcxproj"
+                f = open(moduleFileName,"w")
+        prjId = ProjectGUID()
+        origFile = origFile.replace(guidStr,sanitizeArg(prjId))
+        origFile = origFile.replace(prjNameStr,sanitizeArg(prjName))
+        origFile = origFile.replace(buildTypeStr,sanitizeArg(buildType))
+        origFile = origFile.replace(buildCmdStr,buildCmd)
+        origFile = origFile.replace(rebuildCmdStr,rebuildCmd)
+        origFile = origFile.replace(cleanCmdStr,cleanCmd)
+        f.write(origFile)
+        f.close()
+        dependencies = []
+        for prj in allProjects:
+                dependencies.append(prj[1])
+        prjTuple = prjName.strip(), prjId, "", dependencies, moduleFileName[moduleFileName.rfind("/")+1:]
+        allProjects.append(prjTuple)        
 
 def patchVCProjLib(prjName,files,arguments,libArgs,linkOut,objOut,allLibFiles,libOut):
         #allLibFiles needs to be added as a copy command in postbuild from the
@@ -869,6 +905,7 @@ try:
 except:
         pass
 parseOutputFile(os.path.join(moduleName,moduleName + ".txt"))
+patchVCProjMake(moduleName,True,"WinDeliver.bat","","")
 print ###############################################
 print allProjects
 patchSolution(allProjects,os.path.join(moduleName, moduleName + ".sln"))
