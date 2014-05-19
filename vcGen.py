@@ -165,7 +165,11 @@ def parseNext(str,it,lastArgs,inFileGroup,outFileGroup,cmdGroup):
                 out = str[it:tmp_it]
                 out = fixPaths(out)
                 objs = out.split()
-                objs = objs[3:len(objs)]
+                tmpObjs = []
+                for tmpObj in objs:
+                        if (tmpObj != "lib" and tmpObj[0] != "@" and tmpObj[0:4] != "/OUT"):
+                                tmpObjs.append(tmpObj)
+                objs = tmpObjs
                 tmp_it = out.find("/OUT:")+len("/OUT:")
                 outFile = out[tmp_it:out.find(" ",tmp_it)]
                 args = out[tmp_it:out.find("@")]
@@ -240,6 +244,8 @@ def newParse(fileName):
                 if (it == -1):                   
                         break
         cmdGroup = verifyArgs(cmdGroup)
+        for cmd in cmdGroup:
+                print cmd
         groupChild(cmdGroup)
 
 def verifyArgs(cmdGroup):
@@ -345,7 +351,7 @@ def groupChild(cmdGroup):
                         cfgType = "Application"
                 elif (cfgType != "lib"):
                         print "Unknown file extension: " + cfgType                
-                end_it = resultCmd[0][1][0].rfind("/")+1
+                end_it = resultCmd[0][2][0].rfind("/")+1
                 objOut = resultCmd[0][2][0][0:end_it]
                 outputFile = resultCmd[1][2][0]
                 mapName = findMap(resultCmd[1][0])
@@ -391,7 +397,7 @@ def tryToFindFile(inStr,repCmd,initStr):
             strLen = len(repCmd) - len(inStr)
             repCmd = ""
             for i in 0, strLen:
-                    repCmd += "../"
+                    repCmd += "*/"
             pathStr = repCmd
         else:
                 repCmd = repCmd.replace(inStr,"",1)
@@ -402,18 +408,19 @@ def tryToFindFile(inStr,repCmd,initStr):
                 pathStr = os.path.join(moduleName,pathStr)
         pathStr = pathStr.replace("\\","/")
         files = glob.glob(pathStr)
-        #if len(files) == 0:
-        #        print "WARNING! Path " + origStr + " was unable to be found"
-        #        print "Using an initial string of " + initStr
-        #        print "Manual action is required to fix this"
-        #        print "Assuming that the named directory does exist"
-        #if len(files) > 1:
-        #        print "WARNING! Multiple matching paths found for path "
-        #        print origStr + ". Defaulting to include all paths"
-        #        print "User action may be required to fix this"
-        #        print "Matches found: "
-        #        for f in files:
-        #                print f
+        if len(files) == 0:
+                print "WARNING! Path " + origStr + " was unable to be found"
+                print "Using an initial string of " + initStr
+                print "Manual action is required to fix this"
+                print "Assuming that the named directory does exist"
+                print pathStr
+        if len(files) > 1:
+                print "WARNING! Multiple matching paths found for path "
+                print origStr + ". Defaulting to include all paths"
+                print "User action may be required to fix this"
+                print "Matches found: "
+                for f in files:
+                        print f
         for f in files:
                 f = f[len(moduleName)+1:]
                 if f != "":
@@ -444,9 +451,16 @@ def fixPaths(cmd):
                 #print "RepCmd found: " + repCmd
                 break
         for newCmd in newCmds:
+                if (newCmd == "cl.exe" or newCmd == "link" or newCmd == "lib"):
+                        continue
                 newerCmd = newCmd
                 newerCmd = newerCmd.replace(repCmd,"")
-                if newerCmd.find("../") != -1:
+                #if newerCmd.find("../") != -1:
+                if newerCmd[0] != '-' and newerCmd[0] != '/' and newerCmd[0] != '@':
+                        #If we have a lib file that is just a filename then it must
+                        #be a library included from outside the module
+                        if (newerCmd[-4:] == ".lib" and newerCmd[0].find("/") == -1):
+                                continue
                         if (repCmd == ""):
                                 print "No wntmsci12.pro path found, unable to determine proper file location"
                         else:
@@ -729,6 +743,7 @@ def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,
         origFile = origFile.replace(doMapStr,sanitizeArg(doMap))
         origFile = origFile.replace(mapFileStr,sanitizeArg(mapName))
         origFile = origFile.replace(outputStr,objOut)
+        print objOut
         origFile = origFile.replace(outputFileStr,sanitizeArg(targetName))
         moduleFileName = os.path.join(moduleName, prjName + ".vcxproj")
         outFile = open(moduleFileName,"w")
@@ -746,20 +761,6 @@ def sanitizeArg(arg):
         arg = arg.replace("\r","")
         arg = arg.strip()
         return arg
-
-#Finds all library files and looks through previous
-#modules in order to find any that were the output
-#of that module, and if so marks that module as a dependency
-def findDependencies(project):
-        deps = []
-        for f in project:
-                for prj in allProjects:
-                        name = f[f.rfind("/")+1:]
-                        if (name.strip() == prj[2].strip()):
-                            print "Dependency found: ", prj[1]
-                            deps.append(prj[1])
-                            continue
-        return deps
 
 #Check if the input is a valid command line argument or junk
 #left over
@@ -923,3 +924,4 @@ newParse(moduleName + "/" + moduleName + ".txt")
 patchVCProjMake(moduleName,True,"WinDeliver.bat","","")
 patchSolution(allProjects,os.path.join(moduleName, moduleName + ".sln"))
 parseDLst(os.path.join(moduleName,"prj",deliverFileName))
+print allProjects
