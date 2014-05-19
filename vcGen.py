@@ -1,5 +1,4 @@
 #TODO: 
-
 import os
 import string
 import random
@@ -16,7 +15,7 @@ deliverFileName = "d.lst"
 # The path to the main OO directory
 # If this isn't working on a new machine, this
 # is probably why
-mainPath = "C:/steve/TestARea/main"
+mainPaths = ["C:/steve/TestARea/main","C:/steve/TestArea/main"]
 # Use this to figure out which step we are in
 # Most modules will end with the same string
 # that they began with
@@ -39,10 +38,13 @@ extraIncludeDirs = []
 outputString = ""
 deliverBatName = "WinDeliver.bat"
 FILESIZE_LIMIT = 1024*500
-
+inFileGroup = []
+outFileGroup = []
 # prjTuple = prjName, prjId, outputFile, dependencies, fileName
 allProjects = []
-
+# Visual studio doesn't like projects sharing the same name
+# so keep track of ones that we've seen and append a 1 to the end of them
+usedPrjNames = []
 includeDebug = False
 
 postBuildName = 'postbuild.bat'
@@ -89,259 +91,304 @@ def loadLibFiles(projFile, mainPath, indentationLevel):
                 if (len(fileExt) > 1 and fileExt[1] in libExtensions):
                         printAndOutput(projFile, file + ';', indentationLevel)
 
-# while(can find string "Making:"):
-#       beg = index where string "Making:...\n" starts
-#       end = the index where the matching "Making:...\n" starts
-#       while(can find string "Compiling:"):
-#             comp_beg = index where string "Compiling:" ends
-#             comp_end = index where string "Compiling:...\n" ends
-#             file_path = the "..." part of the "Compiling:...\n" string
-#             file_path => remove " " and "\n" from file_path
-#             file_paths[] = file_path.split("/")
-#             dir_path =  just the "/one/two" part of "/one/two/three"
-#             add dir_path to extraIncludeDirs if not already present
-#       if beg is null, break
-#       if string "\nlib " found:
-#               outDir = the "/one/two" substring of "/OUT:/one/two ...\n"
-#               find start index of "Making:" found after "\nlib "
-#               tmpString = the "..." substring of "\nlib ...Making:"
-def parseOutputFile(fileName):
+def formatOutput(str):
+        str1 = "\nMicrosoft (R) Library Manager Version 9.00.30729.01\nCopyright (C) Microsoft Corporation.  All rights reserved.\n"
+        str2 = "\nMicrosoft (R) Incremental Linker Version 9.00.30729.01\nCopyright (C) Microsoft Corporation.  All rights reserved.\n"
+        str = str.replace(str1,"")
+        str = str.replace(str2,"")
+        return str
+
+def findNext(str,it):
+        findStrs = ["cl.exe ","\nlib ","\nlink "]
+        ret_it = len(str)+1
+        fStr = ""
+        for findStr in findStrs:
+                tmp_it = str.find(findStr,it)
+                if (tmp_it < ret_it and tmp_it != -1):
+                        ret_it = tmp_it
+                        fStr = findStr
+        fStr = fStr.strip()
+        return ret_it, fStr
+
+def parseNext(str,it,lastArgs,inFileGroup,outFileGroup,cmdGroup):
+        it, type = findNext(str,it)
+        end_it = -1
+        tmp_it = -1
+        tmp = []
+        #Obj Tuple = Name, inFiles, outFiles, args
+        if (type == "cl.exe"):
+                tmp_it = str.find("\n",it)
+                end_it = str.find("\n",tmp_it+1)
+                out = str[it:end_it]
+                out = fixPaths(out)
+                tmp_it2 = out.find(" ",end_it)
+                tmp_it3 = out.rfind(" ",0,tmp_it2)
+                out_it = out.find("-Fo")
+                out_end_it = out.find(" ",out_it) 
+                tmp_it = out.rfind("/",0,out_end_it)+1
+                args = out[len("cl.exe "):tmp_it]
+                args = fixPaths(args)
+                outFileName = out[out_it+len("-Fo"):out_end_it]
+                in_end_it = out.rfind(" ")
+                in_end_it = out.rfind(" ",0,in_end_it-1)
+                in_it = out.rfind(" ",0,in_end_it-1)+len(" ")
+                inFileName = out[in_it:in_end_it]
+                if args != lastArgs and lastArgs != "":
+                        tmp = (lastArgs,inFileGroup,outFileGroup,"cl.exe")
+                        if (tmp[1] != [] or tmp[2] != []):
+                                cmdGroup.append(tmp)
+                        inFileGroup = []
+                        outFileGroup = []
+                lastArgs = args
+                inFileGroup.append(inFileName)
+                outFileGroup.append(outFileName)
+        elif (type == "lib"):
+                #If we have any leftover files from cl.exe
+                #then add them as a tuple
+                if (inFileGroup != []):
+                        tmp = (lastArgs,inFileGroup,outFileGroup,"cl.exe")
+                        if (tmp[1] != [] or tmp[2] != []):
+                                cmdGroup.append(tmp)
+                inFileGroup = []
+                outFileGroup = []
+                objs = []
+                tmp_it = str.find("\n",it+1)
+                end_it = str.find("\n",tmp_it+1)
+                tempStr = str[it:end_it]
+                while (tempStr.find(".obj") != -1 or tempStr.find(".lib") != -1):
+                        tmp_it = end_it
+                        end_it = str.find("\n",tmp_it+1)
+                        tempStr = str[tmp_it:end_it]
+                #Move back one so we are able to match the following newline
+                #with the link or lib strings
+                end_it = end_it-1
+                out = str[it:tmp_it]
+                out = fixPaths(out)
+                objs = out.split()
+                objs = objs[3:len(objs)]
+                tmp_it = out.find("/OUT:")+len("/OUT:")
+                outFile = out[tmp_it:out.find(" ",tmp_it)]
+                args = out[tmp_it:out.find("@")]
+                args = args.replace(outFile,"")
+                tmp = (args,objs,[outFile],"lib")
+                if (tmp[1] != [] or tmp[2] != []):
+                        cmdGroup.append(tmp)
+        elif (type == "link"):
+                #If we have any leftover files from cl.exe
+                #then add them as a tuple
+                if (inFileGroup != []):
+                        tmp = (lastArgs,inFileGroup,outFileGroup,"cl.exe")
+                        if (tmp[1] != [] or tmp[2] != []):
+                                cmdGroup.append(tmp)
+                inFileGroup = []
+                outFileGroup = []
+                argList = ""
+                objList = []
+                tmp_it = str.find("\n",it+1)
+                end_it = str.find("\n",tmp_it+1)
+                out = str[it:end_it]
+                out = fixPaths(out)
+                tmp_it = out.find("-out:")+len("-out:")
+                outFile = out[tmp_it:out.find(" ",tmp_it)]
+                argList = out.split(" ")
+                endArgList = ""
+                #print argList
+                for arg in argList:
+                        if arg == "":
+                                continue
+                        if arg == 'link':
+                                continue
+                        if arg[0] == '@':
+                                continue
+                        if arg[0] == '/' or arg[0] == '-':
+                                endArgList += arg + " "
+                        else:
+                                objList.append(arg)
+                inFileGroup = objList
+                outFileGroup.append(outFile)
+                tmp = (endArgList,inFileGroup,outFileGroup,"link")
+                if (tmp[1] != [] or tmp[2] != []):
+                        cmdGroup.append(tmp)
+                outFileGroup = []
+                inFileGroup = []
+        else:
+                if (inFileGroup != []):
+                        tmp = (lastArgs,inFileGroup,outFileGroup,"cl.exe")
+                        cmdGroup.append(tmp)
+                inFileGroup = []
+                outFileGroup = []
+        return end_it, lastArgs, inFileGroup, outFileGroup, cmdGroup
+
+#Matching object: Add as child of project
+#Multiple objects: add dependency
+#Matching lib: add as dependency
+
+def newParse(fileName):
         file = open(fileName,"r")
         outputString = file.read()
-        it = 0
+        #Remove the Copyright Microsoft text etc
+        #from the output
+        outputString = formatOutput(outputString)
+        it = -1
+        lastCmd = ""
+        cmdGroup = []
+        inFileGroup = []
+        outFileGroup = []
+        lastArgs = ""
         while (1):
-                if (it > len(outputString)):
-                        return
-                libArgs = ""
-                linkOut = ""
-                objOut = ""
-                exeArgs = ""
-                binName = ""
-                libOut = ""
-                mapName = ""
-                allLibFiles = []
-                # Limit our processing to be between the first 'Making' output
-                # and the next: this should correspond to one Makefile/project
-                it = outputString.find(findModuleStr,it)
-                # Sometimes 'Making' commands are not matched at both ends;
-                # go until the next one in that case
-                # Find the first line containing the Making command: the rest
-                # of it should be the call to cl.exe or lib; we want the
-                # arguments to cl.exe to put under additional dependencies
-                makeStr = outputString[it:outputString.find("\n",it)]
-                end_it = outputString.find(makeStr,it+len(makeStr))
-                fileNames = []
-                compIt = it
-                # Process any files that were compiled and add their paths
-                # to an array: this ensures that only files that should
-                # actually be processed are used
-                while (1):
-                        compIt = outputString.find("Compiling:",compIt,end_it)
-                        if compIt == -1:
-                                break
-                        compIt += len("Compiling:")
-                        endCompIt = outputString.find("\n",compIt,end_it)
-                        filePath = outputString[compIt:endCompIt]
-                        filePath = filePath.replace(" ","")
-                        filePath = filePath.replace("\n","")
-                        newFilePath = filePath.split("/",1)
-                        # Automatically include header file directories
-                        # where source files were found as a safeguard against
-                        # improper header detection
-                        # THIS MAY CAUSE ISSUES IN SOME MODULES
-                        dirPath = filePath.rsplit("/",1)
-                        # COLIN: can just be 0 unless there is another case 
-                        # where len is > 2 could check if len == 2, then do
-                        # something if not true
-                        dirPath = dirPath[len(dirPath)-2]
-                        if (not dirPath in extraIncludeDirs):
-                                extraIncludeDirs.append(dirPath)
-                        # Generally the compiling command includes the name
-                        # of the directory that we are in, so we slice it off
-                        # here
-                        if (len(newFilePath) >= 2):
-                                fileNames.append(newFilePath[1])
-
-                # If we failed to find a 'Making' word then we are out of things
-                # to process
-                if (it == -1):
+                it, lastArgs, inFileGroup, outFileGroup, cmdGroup = parseNext(outputString,it+1,lastArgs, inFileGroup,outFileGroup,cmdGroup)
+                if (it == -1):                   
                         break
-                # Figure out which command we are dealing with
-                # COLIN: Why do we care if "\n" is in front of "lib" or "link"?
-                # (my guess: "lib" and "link" are likely to be found elsewhere in
-                # the string being searched)
-                old_it = outputString.find("cl.exe",it)
-                lib_it = outputString.find("\nlib ",it,end_it)
-                link_it = outputString.find("\nlink ",it,end_it)
-                if (lib_it > 0 and link_it > 0):
-                        print "Warning: both lib and link matched in output"
-                        print "Defaulting to lib parsing"
-                        # print outputString[old_it:lib_it]
-                        # print end_it, it
-                        # outputString[old_it:end_it]
-                if (lib_it != -1):
-                        out_it = outputString.find("/OUT:")+len("/OUT:")
-                        outDir = outputString[out_it:outputString.find(" ",out_it)]
-                        moduleStart_it = outputString.find(findModuleStr,lib_it)
-                        tmpString = outputString[lib_it+len("\nlib "):moduleStart_it]
-                        # Remove any argument beginning with an @
-                        # COLIN: instead maybe:
-                        # tmpString = re.sub(r'@[^\n]*', '', tmpString)
-                        # The current implementation only replaces the first
-                        # argument beginning with an @ found
-                        at_it = tmpString.find("@")
-                        if (at_it != -1):
-                                tmpString = tmpString.replace(tmpString[at_it:tmpString.find("\n",at_it)],"")+"\n"                      
-                        cmds = tmpString.split("\n")
-                        for cmd in cmds:
-                                doSkip = 0
-                                # We don't want the output command included in additional
-                                # options because Visual Studio does not like that
-                                tmp_it = cmd.find(outStr)
-                                if (tmp_it != -1):
-                                        libOut = cmd[tmp_it+len(outStr):cmd.find(" ",tmp_it)]
-                                        libOut = fixPaths(libOut)
-                                        print libOut
-                                        cmd = cmd.replace(cmd[tmp_it:cmd.find(" ",tmp_it)],"")
-                                #Actually lets just skip every command line argument for the linker
-                                #since it just consists of the obj files that should already be included
-                                #by Visual Studio
-                                for skipCmd in skipCommands:
-                                        #if (cmd[0:len(skipCmd)] == skipCmd):
-                                        doSkip = 1
-                                        break
-                                if (cmd != "" and doSkip == 0):
-                                        cmd = fixPaths(cmd)
-                                        libArgs += cmd
+                #out = fixPaths(out)
 
-                        # Find the next instance of lib in the output
-                        # If there are multiple instances, we want to make
-                        # note of this and copy the first file to be build
-                        # to the second location
-                        old_lib_it = lib_it
-                        # lib_it = outputString.find("\nlib ",lib_it+1,end_it)
-                        while (lib_it != -1):
-                                tmp_it = outputString.find("/OUT:", lib_it, end_it)+len("/OUT:")
-                                end_tmp_it = outputString.find(" ", tmp_it, end_it)
-                                #print tmp_it
-                                #print outputString[tmp_it:end_it]
-                                extraLib = fixPaths(outputString[tmp_it:end_tmp_it])
-                                allLibFiles.append(extraLib)
-                                old_lib_it = lib_it
-                                lib_it = outputString.find("\nlib ",lib_it+1,end_it)
-                                print "Extra build locations for lib file: "
-                                print allLibFiles
-                        lib_it = old_lib_it
-                it = old_it
-                # Offset the index of 'cl.exe' to beyond it so we
-                # don't find it again
-                old_it += len("cl.exe")
-                if (it == -1):
-                        break
-                # Get the index of the end of the string
-                it = outputString.find("\n",it)
-                if (it == -1):
-                        break
-                cmd = outputString[old_it:it]
-                # These strings generally need to be changed
-                # due to differences in the working directory
-                cmd = fixPaths(cmd)
-                cmd = str.split(cmd)
-                # Get rid of the last element since it specifies the filename
-                cmd.pop()
-                newArg = []
-                for arg in cmd:
-                # Replace full paths
-                        if arg.find(":") != -1:
-                                # Don't want absolute paths
-                                arg = arg.replace(mainPath,"..")
-                                # We need to split off the filename in the output
-                                # parameter as we are running multiple files
-                                # and therefore just need the directory name
-                        if arg.find("-Fo") != -1:
-                                temp = arg.rsplit("/",1)
-                                arg = temp[0] + "/"
-                                objOut = arg[3:]
-                                objOut = objOut.strip(" \t\n\r")
-                                #print objOut
-                                continue
-                        # We tend to not need these paths
-                        # Okay we may need to replace these with environment variables
-                        if arg.find("~") == -1:
-                                newArg.append(arg)
+                #if tmp_it != -1:
+                #elif out[0:4] == "lib ":
+                #        out = fixPaths(out)
+                #        tmp_it = out.find("/OUT")+len("/OUT")
+                #        print tmp_it
+                #        end_it = out.find(" ",tmp_it)
+                #        outFileName = out[tmp_it:end_it]
+                #        objList = []
+                #        
+                #        print outFileName
+                #if it > len(outputString):
+                #        break
+        #for cmd in cmdGroup:
+        #        if cmd[3] == "cl.exe" or cmd[3] == "lib":
+        #                findChild(cmd,cmdGroup)
+        for cmd in cmdGroup:
+                print cmd
+        cmdGroup = verifyArgs(cmdGroup)
+        groupChild(cmdGroup)
 
-                if (link_it != -1):
-                        # First go back and figure out what our output filename is
-                        old_it = link_it + len("\nlink ")
-                        out_it = outputString.rfind("-out:",it+len("-out:"),end_it)+len("-out:")
-                        out_file = outputString[out_it:outputString.find(" ",out_it,end_it)]
-                        out_file = fixPaths(out_file)
-                        # Then use the type to select what type of project we are using
-                        extensionType = out_file[out_file.rfind(".")+1:]
-                        extensionType = extensionType.strip()
-                        if (extensionType == "exe"):
-                                cfgType = "Application"
-                        elif (extensionType == "dll"):
-                                cfgType = "DynamicLibrary"
-                        else:
-                                print "Linking with unknown output file extension type: " + extensionType + "<END>"
-                                print "Defaulting to dll project type"
-                                cfgType = "DynamicLibrary"
-                        tmp_it = outputString.find("linking ",old_it)
-                        tmpString = outputString[old_it:tmp_it]
-                        # print tmpString
-                        at_it = tmpString.find("@")
-                        if (at_it != -1):
-                                tmpString = tmpString.replace(tmpString[at_it:tmpString.find("\n",at_it)],"")+"\n"   
-                        cmds = tmpString.split("\n")
-                        # Also we need to move the -map: command into the XML proper
-                        # Remove any argument beginning with an @  
-                        for cmd in cmds:
-                                doSkip = 0
-                                tmp_it = cmd.find("-out:")
-                                if (tmp_it != -1):
-                                        cmd = cmd.replace(cmd[tmp_it:cmd.find(" ",tmp_it)],"")
-                                tmp_it = cmd.find(badMapStr)
-                                if (tmp_it != -1):
-                                        # The map argument needs to go in the XML in order to
-                                        # work properly, and should be removed from the
-                                        # additional options field
-                                        mapName = cmd[tmp_it+len(badMapStr):cmd.find(" ",tmp_it)]
-                                        cmd = cmd.replace(cmd[tmp_it:cmd.find(" ",tmp_it)],"")
-                                        mapName = fixPaths(mapName)
-                                for skipCmd in skipCommands:
-                                        if (cmd[0:len(skipCmd)] == skipCmd):
-                                                doSkip = 1
-                                                break
-                                if not isArg(cmd):
-                                        doSkip = 1
-                                if (cmd != "" and doSkip == 0):
-                                        cmd = fixPaths(cmd)
-                                        exeArgs += cmd
-                        # Possible Issue: Detect multiple link operations in one file
-                        # and copy previously built output file to new file location
+def verifyArgs(cmdGroup):
+        resultCmds = []
+        for cmd in cmdGroup:
+                argList = []
+                for arg in cmd[0].split():
+                        if (arg.find("~") == -1):
+                                argList.append(arg)
+                newCmd = (" ".join(argList),cmd[1],cmd[2],cmd[3])
+                resultCmds.append(newCmd)
+        return resultCmds
 
-                # Take off the last two slashes to get the deepest directory name
-                # (plus the first filename) and set the project name to that
-                if (len(fileNames) == 0):
-                        prjName = "fix_me"
-                else:
-                        prjName = fileNames[0].rsplit("/",2)
-                        prjName = prjName[1]
-                libPrjName = prjName
-                exePrjName = prjName
-                #print prjName
-                if lib_it != -1 and link_it != -1:
-                        libPrjName += "_lib"
-                        exePrjName += "_" + extensionType
-                if (lib_it != -1):
-                        patchVCProjLib(libPrjName,fileNames,newArg,libArgs,linkOut,objOut,allLibFiles,libOut)
-                if (link_it != -1):
-                        patchVCProjExeDll(exePrjName,fileNames,newArg,exeArgs,cfgType,objOut,out_file,mapName)
-                if lib_it == -1 and link_it == -1:
-                        print "Neither lib nor linking commands found, vcProj will not be generated"
-                it = end_it+1
-                #print "Restarting with remaining output of: " + outputString[end_it:]
+def union(set1,set2):
+        objs = []
+        sources = []
+        y = 0
+        for elem1 in set1:
+                x = 0
+                for elem2 in set2:
+                        if (elem1.strip() == elem2.strip()):
+                                objs.append(x)
+                                sources.append(y)
+                        x += 1
+                y += 1
+        return objs, sources
+
+#Find any .lib or .exe/dll commands that utilize this
+#lib file
+def findLibChildren(libCmd,cmdGroup):
+        childList = []
+        depList = []
+        for cmd in cmdGroup:
+                if (union(libCmd[2],cmd[1]) != []):
+                        childList.append(cmd)
+        print "Lib Cmd: "
+        print libCmd
+        print childList
+
+#Base cmd, lib children, cmd children, dependencies
+def groupChild(cmdGroup):
+        tmpCmd = [[],[]]
+        compileCmds = []
+        libCmds = []
+        linkCmds = []
+        resultCmds = []
+        for cmd in cmdGroup:
+                if (cmd[3] == "cl.exe"):
+                        compileCmds.append(cmd)
+                elif (cmd[3].strip() == "link"):
+                        linkCmds.append(cmd)
+                elif (cmd[3] == "lib"):
+                        libCmds.append(cmd)
+        #Cmd Tuple: (compileArgs,inFiles,outObj,inObj,outLib,inLib,outLink)
+        for cmd in compileCmds:
+                tmpLib = []
+                tmpLink = []
+                #FixMe: Support multiple lib and link cmds
+                #Find any library commands built with these obj files
+                for libCmd in libCmds:
+                        tmpUn, tmpSources = union(libCmd[1],cmd[2])
+                        if (tmpUn != []):
+                                tmpCmd = []
+                                sourceFiles = []
+                                for i in tmpUn:
+                                        sourceFiles.append(cmd[1][i])
+                                for i in tmpSources:
+                                        tmpCmd.append(libCmd[1][i])
+                                newClCmd = (cmd[0],sourceFiles,tmpCmd,cmd[3])
+                                newLibCmd = (libCmd[0],tmpCmd,libCmd[2],libCmd[3])
+                                tmpLib = (newClCmd,newLibCmd)
+                #Also find any exe or dll files built with these obj files
+                for linkCmd in linkCmds:
+                        tmpUn, tmpSources = union(linkCmd[1],cmd[2])
+                        if (tmpUn != []):
+                                tmpCmd = []
+                                sourceFiles = []
+                                for i in tmpUn:
+                                        sourceFiles.append(cmd[1][i])
+                                for i in tmpSources:
+                                        tmpCmd.append(linkCmd[1][i])
+                                newClCmd = (cmd[0],sourceFiles,tmpCmd,cmd[3])
+                                newLinkCmd = (linkCmd[0],linkCmd[1],linkCmd[2],linkCmd[3])
+                                resultCmds.append((newClCmd,newLinkCmd))
+                if (tmpLib != []):
+                        resultCmds.append(tmpLib)
+        for resultCmd in resultCmds:
+                prjName = resultCmd[1][2][0]
+                prjName = prjName[prjName.rfind("/")+1:]
+                prjName = prjName.replace("/","_")
+                prjName = prjName.replace(".","_")
+                prjName = prjName.replace("\\","_")
+                while (prjName in usedPrjNames):
+                        print "Name " + prjName + " already used, appending 1"
+                        prjName += '1'
+                usedPrjNames.append(prjName)
+                #Fix Me: Rewrite this abomination
+                files = resultCmd[0][1]
+                arguments = resultCmd[0][0].split()
+                libArgs = exeArgs = resultCmd[1][0]
+                cfgType = resultCmd[1][2][0]
+                cfgType = cfgType[-3:]
+                if (cfgType == "dll"):
+                        cfgType = "DynamicLibrary"
+                elif (cfgType == "exe"):
+                        cfgType = "Application"
+                elif (cfgType != "lib"):
+                        print "Unknown file extension: " + cfgType                
+                end_it = resultCmd[0][1][0].rfind("/")+1
+                objOut = resultCmd[0][2][0][0:end_it]
+                outputFile = resultCmd[1][2][0]
+                mapName = findMap(resultCmd[1][0])
+                libIn = []
+                for l in resultCmd[1][1]:
+                        if l[-4:] == ".lib":
+                                libIn.append(l)
+                allLibFiles = outputFile
+                if resultCmd[1][3] == "link":
+                        patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,mapName,libIn)
+                elif resultCmd[1][3] == "lib":
+                        patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,outputFile,libIn)
+
+def findMap(str):
+        tmp_it = str.find(badMapStr)
+        #Append a space so that if the map is the last command
+        #it will be found properly
+        str += " "
+        if (tmp_it == -1):
+                return ""
+        return str[tmp_it+len(badMapStr):str.find(" ",tmp_it)]        
 
 # origFilePath = "../one/two/afile.txt"
 # pathStr = "*/one/two/"
@@ -362,26 +409,33 @@ def tryToFindFile(inStr,repCmd,initStr):
         maxStr = inStr.rfind("/")
         fileName = inStr[maxStr+1:]
         inStr = inStr[minStr:maxStr+1]
-        repCmd = repCmd.replace(inStr,"",1)
-        pathStr = repCmd.replace("..","*")
+        if (len(repCmd) > len(inStr)):
+            strLen = len(repCmd) - len(inStr)
+            repCmd = ""
+            for i in 0, strLen:
+                    repCmd += "../"
+            pathStr = repCmd
+        else:
+                repCmd = repCmd.replace(inStr,"",1)
+                pathStr = repCmd.replace("..","*")
         if (fileName.find("*") == -1):
                 pathStr = os.path.join(moduleName,pathStr+fileName)
         else:
                 pathStr = os.path.join(moduleName,pathStr)
         pathStr = pathStr.replace("\\","/")
         files = glob.glob(pathStr)
-        if len(files) == 0:
-                print "WARNING! Path " + origStr + " was unable to be found"
-                print "Using an initial string of " + initStr
-                print "Manual action is required to fix this"
-                print "Assuming that the named directory does exist"
-        if len(files) > 1:
-                print "WARNING! Multiple matching paths found for path "
-                print origStr + ". Defaulting to include all paths"
-                print "User action may be required to fix this"
-                print "Matches found: "
-                for f in files:
-                        print f
+        #if len(files) == 0:
+        #        print "WARNING! Path " + origStr + " was unable to be found"
+        #        print "Using an initial string of " + initStr
+        #        print "Manual action is required to fix this"
+        #        print "Assuming that the named directory does exist"
+        #if len(files) > 1:
+        #        print "WARNING! Multiple matching paths found for path "
+        #        print origStr + ". Defaulting to include all paths"
+        #        print "User action may be required to fix this"
+        #        print "Matches found: "
+        #        for f in files:
+        #                print f
         for f in files:
                 f = f[len(moduleName)+1:]
                 if f != "":
@@ -403,15 +457,15 @@ def fixPaths(cmd):
         repCmd = ""
         for newCmd in newCmds:
                 build_it = newCmd.find(buildFolder+"/")
-                # COLIN: Poor flow, I suggest rewriting
                 if (build_it == -1):
                         continue
                 repCmd = newCmd[:build_it]
+                if (repCmd.find(".") == -1):
+                        return cmd
                 repCmd = repCmd[repCmd.find("."):]
                 #print "RepCmd found: " + repCmd
                 break
         for newCmd in newCmds:
-                #print newCmd
                 newerCmd = newCmd
                 newerCmd = newerCmd.replace(repCmd,"")
                 if newerCmd.find("../") != -1:
@@ -423,10 +477,11 @@ def fixPaths(cmd):
                                         newerCmd = ""
                                 for f in foundFiles:
                                         newerCmd += "-I" + f + " "
-                newerCmd = newerCmd.replace(mainPath,"..")
+                for mainPath in mainPaths:
+                        newerCmd = newerCmd.replace(mainPath + "/" + moduleName + "/","")
+                        newerCmd = newerCmd.replace(mainPath,"..")
                 #print newerCmd
                 retCmd += newerCmd + " "
-
         return retCmd
 
 def addExtraDirs(arguments):
@@ -480,7 +535,8 @@ def parseDLst(path):
                                         if f.find("*") != -1:
                                                 tmp = tryToFindFile(f,"","")
                                                 if len(tmp) == 0:
-                                                        print "Warning: no match for file " + f + " found"
+                                                        isDir = isDir
+                                                        #print "Warning: no match for file " + f + " found"
                                                 elif len(tmp) > 1:
                                                         print "Warning: Multiple matches for file: " + f + " found"
                                                         print "Defaulting to use the first match"
@@ -542,25 +598,21 @@ def loadGlobalDeps(fileName):
                         globalDeps.append(module)
         return globalDeps
 
-def patchLastVcProj():
-        postBuildStr = "<PostBuildEvent>"
-        postBuildStrEnd = "</Command>"
-        prj = allProjects[-1]
-        fileName = prj[4]
-        f = open(fileName,"r")
-        data = f.read()
-        f.close()
-        start_it = data.find(postBuildStr)
-        it = start_it + len(postBuildStr)+1
-        it = data.find("<Command>",it)+len("<Command>")
-        end_it = data.find(postBuildStrEnd,start_it)
-        prevCmd = data[it:end_it]
-        if prevCmd != "":
-                prevCmd += " & "
-        finalStr = prevCmd + deliverBatName
-        data = insert(data,finalStr,it)
-        f = open(fileName,"w")
-        f.write(data)
+def findAllDependencies(projects):
+        newPrjs = []
+        for prj in projects:
+                deps = []
+                for prj2 in projects:
+                        if (prj[0] == prj2[0]):
+                                continue
+                        for lib in prj[5]:
+                                lib = lib[lib.rfind("/")+1:]
+                                if (lib == prj2[2]):
+                                        deps.append(prj2[1])
+                prj[3].extend(deps)
+                newPrj = prj[0], prj[1], prj[2], prj[3], prj[4], prj[5]
+                newPrjs.append(newPrj)
+        return newPrjs
 
 def patchSolution(projects,fileName):
         masterFileName = "solutionMaster.sln"
@@ -584,13 +636,14 @@ def patchSolution(projects,fileName):
         nestStart = "GlobalSection(NestedProjects) = preSolution\n"
         nestMiddle = "{^PRJ_ID^} = {^FOLDER_ID^}\n"
         nestEnd = "EndGlobalSection\n"
-	globalSettingsStr = "\t\t{^PRJ_ID^}.Release|Win32.ActiveCfg = Release|Win32\n\t\t{^PRJ_ID^}.Release|Win32.Build.0 = Release|Win32\n"
+        globalSettingsStr = "\t\t{^PRJ_ID^}.Release|Win32.ActiveCfg = Release|Win32\n\t\t{^PRJ_ID^}.Release|Win32.Build.0 = Release|Win32\n"
         #Not 100% certain if the first GUID is supposed to be the solution's
         #but I can't find that GUID in any of the generated files so...
         slnIdStr = "^SOLUTION_GUID^"
         outFile = open(fileName,"w")
         outputBuf = prjHeader
         slnId = ProjectGUID()
+        projects = findAllDependencies(projects)
         allPrjIds = []
         if len(projects) > 0:
                 #ToDo: Add all projects from dependency
@@ -634,9 +687,11 @@ def patchSolution(projects,fileName):
                 print "No projects were found for this solution, so the solution file will not be written"
         outFile.close()
 
-def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,mapName):
+def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,mapName,libIn):
         print "EXE/DLL Project"
+        print files
         prjName = sanitizeArg(prjName)
+        dependencies = []
         #Remove any file extenions from the project name
         if (prjName.find(".") != -1):
                 prjName = prjName[0:prjName.find(".")]
@@ -659,9 +714,12 @@ def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,
         mapFileStr = "^MAP_NAME^"
         outputFileStr = "^OUTPUT_FILE_NAME^"
         arguments = addExtraDirs(arguments)
-        tmp = findDependencies(exeArgs)
-        dependencies = tmp[0]
-        exeArgs = tmp[1]
+        ourLib = []
+        #Find any files that look like they were generated by this module
+        for l in libIn:
+                if (l.find("/") != -1):
+                        ourLib.append(l)
+        files.extend(ourLib)
         if mapName != "":
                 doMap = "true"
         else:
@@ -696,12 +754,11 @@ def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,
         origFile = origFile.replace(outputStr,objOut)
         origFile = origFile.replace(outputFileStr,sanitizeArg(targetName))
         moduleFileName = os.path.join(moduleName, prjName + ".vcxproj")
-        print moduleFileName
         outFile = open(moduleFileName,"w")
         if (len(origFile) > FILESIZE_LIMIT):
                 print "Warning: string size exceeds 500kb, file will not be written"
                 return
-        prjTuple = prjName, prjId, targetNameWExt, dependencies, moduleFileName
+        prjTuple = prjName, prjId, targetNameWExt, dependencies, moduleFileName, libIn
         allProjects.append(prjTuple)
         outFile.write(origFile)
         outFile.close()
@@ -716,40 +773,16 @@ def sanitizeArg(arg):
 #Finds all library files and looks through previous
 #modules in order to find any that were the output
 #of that module, and if so marks that module as a dependency
-def findDependencies(args):
-        args = args.split()
+def findDependencies(project):
         deps = []
-        newArgs = ""
-        for f in args:
-                #If we do find a dependency with differing paths to the same file
-                #eg wntmsci12.pro/lib/codemaker.lib vs codemaker.lib
-                #use the filename that was generated as output as the path 
-                newArg = f
-                if f.find(".lib") != -1:
-                        file_it = f.rfind("/")
-                        if file_it != -1:
-                                f = f[file_it+1:]
-                        #We want to check just the filenames of the output files
-                        #not the paths, as they may choose different locations
-                        #for each file
-                        #This may be incorrect, however
-                        for prj in allProjects:
-                                file_it = prj[2].rfind("/")
-                                if (file_it != -1):
-                                        prj_out = (prj[2])[file_it+1:]
-                                else:
-                                        prj_out = prj[2]
-                                #Check if found filename was the output of a previous
-                                #module
-                                if (f.strip() == prj_out.strip()):
-                                        print "Dep added: " + prj_out
-                                        deps.append(prj[1].strip())
-                                        newArg = prj[2]
-                                        print prj[2]
-                                        break
-                newArg = sanitizeArg(newArg)
-                newArgs += newArg + " "
-        return (deps, newArgs)
+        for f in project:
+                for prj in allProjects:
+                        name = f[f.rfind("/")+1:]
+                        if (name.strip() == prj[2].strip()):
+                            print "Dependency found: ", prj[1]
+                            deps.append(prj[1])
+                            continue
+        return deps
 
 #Check if the input is a valid command line argument or junk
 #left over
@@ -796,15 +829,23 @@ def patchVCProjMake(prjName,isPostBuild,buildCmd,rebuildCmd,cleanCmd):
         dependencies = []
         for prj in allProjects:
                 dependencies.append(prj[1])
-        prjTuple = prjName.strip(), prjId, "", dependencies, moduleFileName[moduleFileName.rfind("/")+1:]
+        prjTuple = prjName.strip(), prjId, "", dependencies, moduleFileName[moduleFileName.rfind("/")+1:], []
         allProjects.append(prjTuple)        
 
-def patchVCProjLib(prjName,files,arguments,libArgs,linkOut,objOut,allLibFiles,libOut):
+def patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,libOut,libIn):
         #allLibFiles needs to be added as a copy command in postbuild from the
         #output of the original build
         print "Lib project"
+        print files
+        dependencies = []
         rootFile = "libProj.vcxproj"
         prjName = sanitizeArg(prjName)
+        ourLib = []
+        #Find any files that look like they were generated by this module
+        for l in libIn:
+                if (l.find("/") != -1):
+                        ourLib.append(l)
+        files.extend(ourLib)
         #Remove any file extenions from the project name
         if (prjName.find(".") != -1):
                  prjName = prjName[0:prjName.find(".")]
@@ -822,7 +863,7 @@ def patchVCProjLib(prjName,files,arguments,libArgs,linkOut,objOut,allLibFiles,li
         nameStr = "^PROJ_NAME^"
         outputStr = "^OUTPUT^"
         libStr = "^LIB_OPTIONS^"
-        linkOut = "^LINK_OUT^"
+        linkOutStr = "^LINK_OUT^"
         objStr = "^OBJ_FILE_NAME^"
         libStrOut = "^LIB_OUTPUT_FILE^"
         preStr = "^PREBUILD^"
@@ -831,7 +872,6 @@ def patchVCProjLib(prjName,files,arguments,libArgs,linkOut,objOut,allLibFiles,li
         outDirStr = "^OUTDIR^"
         targetName = libOut[max(libOut.rfind("/"),libOut.rfind("\\"))+1:libOut.rfind(".")]
         targetNameWExt = libOut[max(libOut.rfind("/"),libOut.rfind("\\"))+1:]
-        dependencies = []
         outputFile = libOut
         arguments = addExtraDirs(arguments)
         f = open(rootFile,"r")
@@ -864,7 +904,7 @@ def patchVCProjLib(prjName,files,arguments,libArgs,linkOut,objOut,allLibFiles,li
         if (len(origFile) > FILESIZE_LIMIT):
                 print "Warning: string size exceeds 500kb, file will not be written"
                 return
-        prjTuple = prjName.strip(), prjId, targetNameWExt, dependencies, moduleFileName
+        prjTuple = prjName.strip(), prjId, targetNameWExt, dependencies, moduleFileName, libIn
         allProjects.append(prjTuple)
         outFile.write(origFile)
         outFile.close()
@@ -897,15 +937,14 @@ def runEveryFolder(startDir):
 if (len(sys.argv) != 2):
         print "Usage: python vcGen.py moduleName\nRun from main AOO directory and have output file in the name <modulename>/<modulename>.txt"
         exit
-moduleName = sys.argv[1]
+#moduleName = sys.argv[1]
+moduleName = "cppu"
 print ###############################################
 try:
         os.mkdir(os.getcwd() + "\\" + moduleName)
 except:
         pass
-parseOutputFile(os.path.join(moduleName,moduleName + ".txt"))
+newParse(moduleName + ".txt")
 patchVCProjMake(moduleName,True,"WinDeliver.bat","","")
-print ###############################################
-print allProjects
 patchSolution(allProjects,os.path.join(moduleName, moduleName + ".sln"))
 parseDLst(os.path.join(moduleName,"prj",deliverFileName))
