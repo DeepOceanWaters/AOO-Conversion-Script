@@ -239,25 +239,6 @@ def newParse(fileName):
                 it, lastArgs, inFileGroup, outFileGroup, cmdGroup = parseNext(outputString,it+1,lastArgs, inFileGroup,outFileGroup,cmdGroup)
                 if (it == -1):                   
                         break
-                #out = fixPaths(out)
-
-                #if tmp_it != -1:
-                #elif out[0:4] == "lib ":
-                #        out = fixPaths(out)
-                #        tmp_it = out.find("/OUT")+len("/OUT")
-                #        print tmp_it
-                #        end_it = out.find(" ",tmp_it)
-                #        outFileName = out[tmp_it:end_it]
-                #        objList = []
-                #        
-                #        print outFileName
-                #if it > len(outputString):
-                #        break
-        #for cmd in cmdGroup:
-        #        if cmd[3] == "cl.exe" or cmd[3] == "lib":
-        #                findChild(cmd,cmdGroup)
-        for cmd in cmdGroup:
-                print cmd
         cmdGroup = verifyArgs(cmdGroup)
         groupChild(cmdGroup)
 
@@ -294,9 +275,6 @@ def findLibChildren(libCmd,cmdGroup):
         for cmd in cmdGroup:
                 if (union(libCmd[2],cmd[1]) != []):
                         childList.append(cmd)
-        print "Lib Cmd: "
-        print libCmd
-        print childList
 
 #Base cmd, lib children, cmd children, dependencies
 def groupChild(cmdGroup):
@@ -689,7 +667,6 @@ def patchSolution(projects,fileName):
 
 def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,mapName,libIn):
         print "EXE/DLL Project"
-        print files
         prjName = sanitizeArg(prjName)
         dependencies = []
         #Remove any file extenions from the project name
@@ -836,7 +813,6 @@ def patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,libOut,lib
         #allLibFiles needs to be added as a copy command in postbuild from the
         #output of the original build
         print "Lib project"
-        print files
         dependencies = []
         rootFile = "libProj.vcxproj"
         prjName = sanitizeArg(prjName)
@@ -937,14 +913,13 @@ def runEveryFolder(startDir):
 if (len(sys.argv) != 2):
         print "Usage: python vcGen.py moduleName\nRun from main AOO directory and have output file in the name <modulename>/<modulename>.txt"
         exit
-#moduleName = sys.argv[1]
-moduleName = "cppu"
+moduleName = sys.argv[1]
 print ###############################################
 try:
         os.mkdir(os.getcwd() + "\\" + moduleName)
 except:
         pass
-newParse(moduleName + ".txt")
+newParse(moduleName + "/" + moduleName + ".txt")
 patchVCProjMake(moduleName,True,"WinDeliver.bat","","")
 patchSolution(allProjects,os.path.join(moduleName, moduleName + ".sln"))
 parseDLst(os.path.join(moduleName,"prj",deliverFileName))
