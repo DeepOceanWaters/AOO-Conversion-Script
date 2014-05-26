@@ -45,10 +45,13 @@ allProjects = []
 # Visual studio doesn't like projects sharing the same name
 # so keep track of ones that we've seen and append a 1 to the end of them
 usedPrjNames = []
+
+preBuildId = ""
 includeDebug = False
 
 postBuildName = 'postbuild.bat'
-
+versionBatName = "_versions.bat"
+rcScriptName = "_rc.sh"
 ## NEW
 def getDirPath(filePath):
         dirPath = filePath.rsplit("/",1)
@@ -57,6 +60,98 @@ def getDirPath(filePath):
 beginDepComment =  "#Begin Dependencies\n"
 endDepComment = "#End Dependencies\n"
 
+
+def addPrebuild(fileName):
+        vers = findVersions(fileName)
+        rcs = findRCs(fileName)
+        tmpStr = ""
+        cygwin = "C:\\Cygwin\\bin\\bash.exe "
+        if (vers != "" and rcs != ""):
+                tmpStr = "$(SolutionName)" + versionBatName + " &amp; " + cygwin + "$(SolutionName)" + rcScriptName
+        elif (vers != ""):
+                tmpStr = "$(SolutionName)" + versionBatName
+        elif (rcs != ""):
+                tmpStr = "$(SolutionName)" + rsScriptName
+        else:
+                tmpStr = ""
+        patchVCProjMake(moduleName,False,tmpStr,"","")
+
+def findRCs(fileName):
+        #FixMe: Somehow replace the compressed filenames with cygwin environment variables
+        f = open(fileName,"r")
+        str = f.read()
+        f.close()
+        rcs = []
+        it = 0
+        contents = ""
+        while(True):
+                it = str.find("\nrc ",it+1)
+                if (it == -1):
+                        break
+                end_it = str.find("\n",it+1)
+                if (end_it == -1):
+                        break
+                str = fixPaths(str[it:end_it])
+                contents += str + "\r"
+        if (contents != ""):
+                print contents
+                makeCygwinScript(os.path.join(moduleName,moduleName + rcScriptName),contents)
+        return contents
+#Keep track of cat /sed commands and put them into a file that calls
+#replaceVersion.py
+
+def findVersions(fileName):
+        f = open(fileName,"r")
+        str = f.read()
+        it = 0
+        catSeds = []
+        while (True):
+                it = str.find("\ncat ",it+1)
+                if (it == -1):
+                        break
+                end_it = str.find("\n",it+2)
+                sed_it = str.find(" sed ",it)
+                #If the sed command is within the same line, then it is a part
+                #of the version patching system
+                inFile = ""
+                outFile = ""
+                inStr = ""
+                outStr = ""
+                if (sed_it < end_it and sed_it != -1):
+                        str = str[it:end_it]
+                        str = fixPaths(str)
+                        strs = str.split()
+                        for tmpStr in strs:
+                                if (tmpStr == "cat" or tmpStr == "|" or tmpStr == "sed" or tmpStr == ">"):
+                                        continue
+                                if (tmpStr.find("/version.c") != -1):
+                                        inFile = tmpStr
+                                elif (tmpStr.find("_version.c") != -1):
+                                        outFile = tmpStr
+                                elif (tmpStr.find("_version.h") != -1):
+                                        tmpStr = tmpStr.split("/")
+                                        inStr = tmpStr[1]
+                                        outStr = tmpStr[2]
+                        catSeds.append((inFile, outFile, inStr, outStr))
+        batchOutput = ""
+        for catSed in catSeds:
+                tmpStr = "python versionReplace.py " + inFile + " " + outFile + " " + inStr + " " + outStr + "\n"
+                batchOutput += tmpStr
+        if batchOutput != "":
+                makeBatch(os.path.join(moduleName,moduleName+versionBatName),batchOutput)
+        f.close()
+        return batchOutput
+
+def makeBatch(fileName,contents):
+        f = open(fileName, "w")
+        f.write(contents)
+        f.close()
+
+def makeCygwinScript(fileName,contents):
+        init = "source ../winenv.set.sh\r"
+        f = open(fileName, "w")
+        f.write(init+contents)
+        f.close()        
 
 # Description:
 #       Generates a random 32-character project id. Each character represents
@@ -244,8 +339,6 @@ def newParse(fileName):
                 if (it == -1):                   
                         break
         cmdGroup = verifyArgs(cmdGroup)
-        for cmd in cmdGroup:
-                print cmd
         groupChild(cmdGroup)
 
 def verifyArgs(cmdGroup):
@@ -351,8 +444,8 @@ def groupChild(cmdGroup):
                         cfgType = "Application"
                 elif (cfgType != "lib"):
                         print "Unknown file extension: " + cfgType                
-                end_it = resultCmd[0][2][0].rfind("/")+1
-                objOut = resultCmd[0][2][0][0:end_it]
+                end_it = resultCmd[0][2][0].rfind("/")
+                objOut = resultCmd[0][2][0][0:end_it+1]
                 outputFile = resultCmd[1][2][0]
                 mapName = findMap(resultCmd[1][0])
                 libIn = []
@@ -408,19 +501,19 @@ def tryToFindFile(inStr,repCmd,initStr):
                 pathStr = os.path.join(moduleName,pathStr)
         pathStr = pathStr.replace("\\","/")
         files = glob.glob(pathStr)
-        if len(files) == 0:
-                print "WARNING! Path " + origStr + " was unable to be found"
-                print "Using an initial string of " + initStr
-                print "Manual action is required to fix this"
-                print "Assuming that the named directory does exist"
-                print pathStr
-        if len(files) > 1:
-                print "WARNING! Multiple matching paths found for path "
-                print origStr + ". Defaulting to include all paths"
-                print "User action may be required to fix this"
-                print "Matches found: "
-                for f in files:
-                        print f
+        #if len(files) == 0:
+        #        print "WARNING! Path " + origStr + " was unable to be found"
+        #        print "Using an initial string of " + initStr
+        #        print "Manual action is required to fix this"
+        #        print "Assuming that the named directory does exist"
+        #        print pathStr
+        #if len(files) > 1:
+        #        print "WARNING! Multiple matching paths found for path "
+        #        print origStr + ". Defaulting to include all paths"
+        #        print "User action may be required to fix this"
+        #        print "Matches found: "
+        #        for f in files:
+        #                print f
         for f in files:
                 f = f[len(moduleName)+1:]
                 if f != "":
@@ -459,7 +552,7 @@ def fixPaths(cmd):
                 if newerCmd[0] != '-' and newerCmd[0] != '/' and newerCmd[0] != '@':
                         #If we have a lib file that is just a filename then it must
                         #be a library included from outside the module
-                        if (newerCmd[-4:] == ".lib" and newerCmd[0].find("/") == -1):
+                        if (newerCmd[-4:] == ".lib" and newerCmd.find("/") == -1):
                                 continue
                         if (repCmd == ""):
                                 print "No wntmsci12.pro path found, unable to determine proper file location"
@@ -592,8 +685,13 @@ def loadGlobalDeps(fileName):
 
 def findAllDependencies(projects):
         newPrjs = []
+        global preBuildId
         for prj in projects:
                 deps = []
+                if (preBuildId != ""):
+                        deps.append(preBuildId)
+                if (prj[1] == preBuildId):
+                        continue
                 for prj2 in projects:
                         if (prj[0] == prj2[0]):
                                 continue
@@ -743,14 +841,13 @@ def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,
         origFile = origFile.replace(doMapStr,sanitizeArg(doMap))
         origFile = origFile.replace(mapFileStr,sanitizeArg(mapName))
         origFile = origFile.replace(outputStr,objOut)
-        print objOut
         origFile = origFile.replace(outputFileStr,sanitizeArg(targetName))
         moduleFileName = os.path.join(moduleName, prjName + ".vcxproj")
         outFile = open(moduleFileName,"w")
         if (len(origFile) > FILESIZE_LIMIT):
                 print "Warning: string size exceeds 500kb, file will not be written"
                 return
-        prjTuple = prjName, prjId, targetNameWExt, dependencies, moduleFileName, libIn
+        prjTuple = prjName, prjId, targetNameWExt, dependencies, moduleFileName, ourLib
         allProjects.append(prjTuple)
         outFile.write(origFile)
         outFile.close()
@@ -777,6 +874,7 @@ def isArg(arg):
         return False
 
 def patchVCProjMake(prjName,isPostBuild,buildCmd,rebuildCmd,cleanCmd):
+        global preBuildId
         rootFile = "make_proj_master.vcxproj"
         f = open(rootFile,"r")
         guidStr = "^GUID^"
@@ -795,9 +893,16 @@ def patchVCProjMake(prjName,isPostBuild,buildCmd,rebuildCmd,cleanCmd):
         if (isPostBuild):
                 moduleFileName = prjName+"/"+prjName+"_deliver.vcxproj"
                 f = open(moduleFileName,"w")
+        else:
+                moduleFileName = prjName+"/"+prjName+"_prebuild.vcxproj"
+                f = open(moduleFileName,"w")
         prjId = ProjectGUID()
+        if (isPostBuild):
+                newName = prjName + "_deliver"
+        else:
+                newName = prjName + "_prebuild"
         origFile = origFile.replace(guidStr,sanitizeArg(prjId))
-        origFile = origFile.replace(prjNameStr,sanitizeArg(prjName))
+        origFile = origFile.replace(prjNameStr,sanitizeArg(newName.strip()))
         origFile = origFile.replace(buildTypeStr,sanitizeArg(buildType))
         origFile = origFile.replace(buildCmdStr,buildCmd)
         origFile = origFile.replace(rebuildCmdStr,rebuildCmd)
@@ -805,9 +910,12 @@ def patchVCProjMake(prjName,isPostBuild,buildCmd,rebuildCmd,cleanCmd):
         f.write(origFile)
         f.close()
         dependencies = []
-        for prj in allProjects:
-                dependencies.append(prj[1])
-        prjTuple = prjName.strip(), prjId, "", dependencies, moduleFileName[moduleFileName.rfind("/")+1:], []
+        if (isPostBuild):
+                for prj in allProjects:
+                        dependencies.append(prj[1])
+        else:
+                preBuildId = prjId
+        prjTuple = newName.strip(), prjId, "", dependencies, moduleFileName[moduleFileName.rfind("/")+1:], []
         allProjects.append(prjTuple)        
 
 def patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,libOut,libIn):
@@ -881,7 +989,7 @@ def patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,libOut,lib
         if (len(origFile) > FILESIZE_LIMIT):
                 print "Warning: string size exceeds 500kb, file will not be written"
                 return
-        prjTuple = prjName.strip(), prjId, targetNameWExt, dependencies, moduleFileName, libIn
+        prjTuple = prjName.strip(), prjId, targetNameWExt, dependencies, moduleFileName, ourLib
         allProjects.append(prjTuple)
         outFile.write(origFile)
         outFile.close()
@@ -920,7 +1028,8 @@ try:
         os.mkdir(os.getcwd() + "\\" + moduleName)
 except:
         pass
-newParse(moduleName + "/" + moduleName + ".txt")
+addPrebuild(os.path.join(moduleName, moduleName + ".txt"))
+newParse(os.path.join(moduleName, moduleName + ".txt"))
 patchVCProjMake(moduleName,True,"WinDeliver.bat","","")
 patchSolution(allProjects,os.path.join(moduleName, moduleName + ".sln"))
 parseDLst(os.path.join(moduleName,"prj",deliverFileName))
