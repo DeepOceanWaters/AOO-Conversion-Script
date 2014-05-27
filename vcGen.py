@@ -1,3 +1,4 @@
+
 #TODO: 
 import os
 import string
@@ -91,10 +92,14 @@ def findRCs(fileName):
                 end_it = str.find("\n",it+1)
                 if (end_it == -1):
                         break
-                str = fixPaths(str[it:end_it])
-                contents += str + "\r"
+                str = fixPathsSimple(str[it:end_it])
+                strs = str.split()
+                str = ""
+                for arg in strs:
+                        if (arg.find("~") == -1):
+                                str += arg + " "
+                contents += str + "\n"
         if (contents != ""):
-                print contents
                 makeCygwinScript(os.path.join(moduleName,moduleName + rcScriptName),contents)
         return contents
 #Keep track of cat /sed commands and put them into a file that calls
@@ -110,6 +115,8 @@ def findVersions(fileName):
                 if (it == -1):
                         break
                 end_it = str.find("\n",it+2)
+                if (end_it == -1):
+                        break
                 sed_it = str.find(" sed ",it)
                 #If the sed command is within the same line, then it is a part
                 #of the version patching system
@@ -119,28 +126,40 @@ def findVersions(fileName):
                 outStr = ""
                 if (sed_it < end_it and sed_it != -1):
                         str = str[it:end_it]
-                        str = fixPaths(str)
+                        str = fixPathsSimple(str)
+                        str = str.replace("/","\\")
                         strs = str.split()
                         for tmpStr in strs:
                                 if (tmpStr == "cat" or tmpStr == "|" or tmpStr == "sed" or tmpStr == ">"):
                                         continue
-                                if (tmpStr.find("/version.c") != -1):
+                                if (tmpStr.find("\\version.c") != -1):
                                         inFile = tmpStr
                                 elif (tmpStr.find("_version.c") != -1):
                                         outFile = tmpStr
                                 elif (tmpStr.find("_version.h") != -1):
-                                        tmpStr = tmpStr.split("/")
+                                        tmpStr = tmpStr.split("\\")
                                         inStr = tmpStr[1]
                                         outStr = tmpStr[2]
                         catSeds.append((inFile, outFile, inStr, outStr))
         batchOutput = ""
         for catSed in catSeds:
-                tmpStr = "python versionReplace.py " + inFile + " " + outFile + " " + inStr + " " + outStr + "\n"
+                tmpStr = "python ..\\versionReplace.py " + inFile + " " + outFile + " " + inStr + " " + outStr + "\n"
                 batchOutput += tmpStr
         if batchOutput != "":
                 makeBatch(os.path.join(moduleName,moduleName+versionBatName),batchOutput)
         f.close()
         return batchOutput
+
+def fixPathsSimple(cmd):
+        for mainPath in mainPaths:
+                cmd = cmd.replace(mainPath,"..")
+        it = cmd.find(buildFolder)
+        back_it = it-1
+        while (cmd[back_it] == "/" or cmd[back_it] == "."):
+                back_it = back_it-1
+        repStr = cmd[back_it+1:it]
+        cmd = cmd.replace(repStr,"")
+        return cmd
 
 def makeBatch(fileName,contents):
         f = open(fileName, "w")
@@ -148,7 +167,9 @@ def makeBatch(fileName,contents):
         f.close()
 
 def makeCygwinScript(fileName,contents):
-        init = "source ../winenv.set.sh\r"
+        #Cygwin seems to need two backslashes in order to
+        #see one in the sh script (therefore four in this script)
+        init = "source ..\\\\winenv.set.sh\n"
         f = open(fileName, "w")
         f.write(init+contents)
         f.close()        
@@ -294,6 +315,8 @@ def parseNext(str,it,lastArgs,inFileGroup,outFileGroup,cmdGroup):
                 #print argList
                 for arg in argList:
                         if arg == "":
+                                continue
+                        if arg[0:4] == "-out" or arg[0:4] == "-map":
                                 continue
                         if arg == 'link':
                                 continue
@@ -691,6 +714,7 @@ def findAllDependencies(projects):
                 if (preBuildId != ""):
                         deps.append(preBuildId)
                 if (prj[1] == preBuildId):
+                        newPrjs.append(prj)
                         continue
                 for prj2 in projects:
                         if (prj[0] == prj2[0]):
