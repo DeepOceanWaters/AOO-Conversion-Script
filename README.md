@@ -6,8 +6,19 @@ A script to convert the LINUX/UNIX AOO build system (modules) to a Windows based
 
 1. Enter module directory and delete the **wntmsci12.pro** directory.
 2. Enter the main directory (contains all modules).
-2. Run the vcprojGen.py script (format: ```python vcprojGen.py [moduleName]```).
-3. Run the vcGen.py script (format: ```python vcGen.py [moduleName]```).
+3. Choose a module to convert.
+4. Create a text file called *moduleName*.txt in the module's directory.
+5. Enter the **instsetoo_native** directory.
+6. Execute and pipe the output to text file created in step 4:
+  
+  ```build --all:[moduleName] > ../[moduleName]/[moduleName].txt```
+7. Wait until the module has been built: 
+  1. Open the text file created in step 4. 
+  2. Wait until the second occurence of **Building *moduleName***. 
+  3. Stop the process started in step 6.
+  4. Delete everything after the second occurence of **Building *moduleName***
+8. Enter the main directory.
+9. Run the vcGen.py script (format: ```python vcGen.py [moduleName]```).
 
 #### Manual Conversion
 1. Open CygWin
