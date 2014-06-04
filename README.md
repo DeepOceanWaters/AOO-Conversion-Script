@@ -14,9 +14,9 @@ A script to convert the LINUX/UNIX AOO build system (modules) to a Windows based
   ```build --all:[moduleName] > ../[moduleName]/[moduleName].txt```
 7. Wait until the module has been built: 
   1. Open the text file created in step 4. 
-  2. Wait until the second occurence of **Building module**. 
+  2. Wait until the second occurrence of **Building module**. 
   3. Stop the process started in step 6.
-  4. Delete everything after the second occurence of **Building module**
+  4. Delete everything after the second occurrence of **Building module**
 8. Enter the main directory.
 9. Run the vcGen.py script (format: ```python vcGen.py [moduleName]```).
 
@@ -38,7 +38,7 @@ tail -f ../rsc/rsc.txt
 Ctrl-C (when the next Building Module shows)
 fg
 Ctrl-C
-(open rsc.txt in an editor and delete everything after second Building module occurence)
+(open rsc.txt in an editor and delete everything after second Building module occurrence)
 cd ..
 python vcGen.py rsc
 ```
