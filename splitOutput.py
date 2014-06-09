@@ -19,6 +19,10 @@ while(True):
         fileName = fileName.strip()
         end_it = data.find(findStr,it)
         outStr = data[it:end_it]
-        out = open(os.path.join(outDir,fileName+".txt"),"w")
-        out.write(outStr)
-        out.close()
+        try:
+                out = open(os.path.join(fileName,fileName+".txt"),"w")
+                out.write(outStr)
+                out.close()
+        except IOError as e:
+                print "Unable to open/write to file " + fileName
+                print "I/O error({0}): {1}".format(e.errno, e.strerror)

@@ -1,5 +1,3 @@
-
-#TODO: 
 import os
 import string
 import random
@@ -52,7 +50,7 @@ includeDebug = False
 
 postBuildName = 'postbuild.bat'
 versionBatName = "_versions.bat"
-rcScriptName = "_rc.sh"
+rcScriptName = "_cygwin.sh"
 ## NEW
 def getDirPath(filePath):
         dirPath = filePath.rsplit("/",1)
@@ -92,13 +90,13 @@ def findRCs(fileName):
                 end_it = str.find("\n",it+1)
                 if (end_it == -1):
                         break
-                str = fixPathsSimple(str[it:end_it])
-                strs = str.split()
-                str = ""
+                tmpStr = fixPathsSimple(str[it:end_it])
+                strs = tmpStr.split()
+                newStr = ""
                 for arg in strs:
                         if (arg.find("~") == -1):
-                                str += arg + " "
-                contents += str + "\n"
+                                newStr += arg + " "
+                contents += newStr + "\n"
         if (contents != ""):
                 makeCygwinScript(os.path.join(moduleName,moduleName + rcScriptName),contents)
         return contents
@@ -111,7 +109,7 @@ def findVersions(fileName):
         it = 0
         catSeds = []
         while (True):
-                it = str.find("\ncat ",it+1)
+                it = str.find("cat ",it+1)
                 if (it == -1):
                         break
                 end_it = str.find("\n",it+2)
@@ -125,25 +123,26 @@ def findVersions(fileName):
                 inStr = ""
                 outStr = ""
                 if (sed_it < end_it and sed_it != -1):
-                        str = str[it:end_it]
-                        str = fixPathsSimple(str)
-                        str = str.replace("/","\\")
-                        strs = str.split()
-                        for tmpStr in strs:
-                                if (tmpStr == "cat" or tmpStr == "|" or tmpStr == "sed" or tmpStr == ">"):
+                        tmpStr = str[it:end_it]
+                        tmpStr = fixPathsSimple(tmpStr)
+                        tmpStr = tmpStr.replace("/","\\")
+                        strs = tmpStr.split()
+                        for s in strs:
+                                if (s == "cat" or s == "|" or s == "sed" or s == ">"):
                                         continue
-                                if (tmpStr.find("\\version.c") != -1):
-                                        inFile = tmpStr
-                                elif (tmpStr.find("_version.c") != -1):
-                                        outFile = tmpStr
-                                elif (tmpStr.find("_version.h") != -1):
-                                        tmpStr = tmpStr.split("\\")
-                                        inStr = tmpStr[1]
-                                        outStr = tmpStr[2]
+                                if (s.find("\\version.c") != -1):
+                                        inFile = s
+                                elif (s.find("_version.c") != -1):
+                                        outFile = s
+                                elif (s.find("_version.h") != -1):
+                                        s = s.split("\\")
+                                        inStr = s[1]
+                                        outStr = s[2]
                         catSeds.append((inFile, outFile, inStr, outStr))
+                it = end_it
         batchOutput = ""
         for catSed in catSeds:
-                tmpStr = "python ..\\versionReplace.py " + inFile + " " + outFile + " " + inStr + " " + outStr + "\n"
+                tmpStr = "python ..\\versionReplace.py " + catSed[0] + " " + catSed[1] + " " + catSed[2] + " " + catSed[3] + "\n"
                 batchOutput += tmpStr
         if batchOutput != "":
                 makeBatch(os.path.join(moduleName,moduleName+versionBatName),batchOutput)
@@ -314,6 +313,7 @@ def parseNext(str,it,lastArgs,inFileGroup,outFileGroup,cmdGroup):
                 endArgList = ""
                 #print argList
                 for arg in argList:
+                        arg = arg.strip()
                         if arg == "":
                                 continue
                         if arg[0:4] == "-out" or arg[0:4] == "-map":
@@ -322,7 +322,7 @@ def parseNext(str,it,lastArgs,inFileGroup,outFileGroup,cmdGroup):
                                 continue
                         if arg[0] == '@':
                                 continue
-                        if arg[0] == '/' or arg[0] == '-':
+                        if arg[0] == '/' or arg[0] == '-' or arg[-4:] == ".lib":
                                 endArgList += arg + " "
                         else:
                                 objList.append(arg)
@@ -362,7 +362,8 @@ def newParse(fileName):
                 if (it == -1):                   
                         break
         cmdGroup = verifyArgs(cmdGroup)
-        groupChild(cmdGroup)
+        #groupChild(cmdGroup)
+        groupChildNew(cmdGroup)
 
 def verifyArgs(cmdGroup):
         resultCmds = []
@@ -397,6 +398,91 @@ def findLibChildren(libCmd,cmdGroup):
         for cmd in cmdGroup:
                 if (union(libCmd[2],cmd[1]) != []):
                         childList.append(cmd)
+
+def addCmd(toAdd,source,inCmds,clCmds):
+        if (toAdd == False or source == False):
+                return inCmds
+        for args in inCmds:
+                if (args[0] == toAdd[0]):
+                        args[1].append(toAdd[1])
+                        return inCmds
+        inCmds.append((toAdd[0],[toAdd[1]]))
+        return inCmds
+
+def groupChildNew(cmdGroup):
+        tmpCmd = [[],[]]
+        compileCmds = []
+        libCmds = []
+        linkCmds = []
+        resultCmds = []
+        for cmd in cmdGroup:
+                if (cmd[3] == "cl.exe"):
+                        compileCmds.append(cmd)
+                elif (cmd[3].strip() == "link"):
+                        linkCmds.append(cmd)
+                elif (cmd[3] == "lib"):
+                        libCmds.append(cmd)
+        linkTuple = []
+        linkArgTuple = []
+        libArgTuple = []
+        libTuple = []
+        for cmd in linkCmds:
+                for objName in cmd[1]:
+                        if (objName[-4:] != ".obj"):
+                                continue
+                        clCmd = (findObj(objName,compileCmds),objName)
+                        linkTuple = addCmd(clCmd[0],clCmd[1],linkTuple,linkCmds)
+                prjName = cmd[2][0]
+                cfgType = prjName[-3:]
+                if (cfgType == "dll"):
+                        cfgType = "DynamicLibrary"
+                elif (cfgType == "exe"):
+                        cfgType = "Application"
+                else:
+                        print "Unknown file extension: " + cfgType     
+                objOut = cmd[1][0]
+                objOut = objOut[:objOut.rfind("/")+1]
+                prjName = prjName[prjName.rfind("/")+1:]
+                prjName = prjName.replace("/","_")
+                prjName = prjName.replace(".","_")
+                prjName = prjName.replace("\\","_")
+                exeArgs = cmd[0]
+                outputFile = cmd[2]
+                mapName = findMap(cmd[0])
+                outputFile = cmd[2][0]
+                libIn = ""
+                patchVCProjExeDll(prjName,linkTuple,exeArgs,cfgType,objOut,outputFile,mapName,libIn)
+                #print linkTuple[maxTuple][1]
+                linkArgTuple.append(linkTuple)
+        for cmd in libCmds:
+                for objName in cmd[1]:
+                        if (objName[-4:] != ".obj"):
+                                continue
+                        clCmd = (findObj(objName,compileCmds),objName)
+                        libTuple = addCmd(clCmd[0],clCmd[1],libTuple,libCmds)
+                prjName = cmd[2][0]
+                cfgType = prjName[-3:]
+                objOut = cmd[1][0]
+                objOut = objOut[:objOut.rfind("/")+1]
+                prjName = prjName[prjName.rfind("/")+1:]
+                prjName = prjName.replace("/","_")
+                prjName = prjName.replace(".","_")
+                prjName = prjName.replace("\\","_")
+                libArgs = cmd[0]
+                outputFile = cmd[2]
+                mapName = findMap(cmd[0])
+                outputFile = cmd[2][0]
+                libIn = ""
+                patchVCProjLib(prjName,libTuple,libArgs,"lib",objOut,[],outputFile,libIn)
+                #print linkTuple[maxTuple][1]
+                libArgTuple.append(libTuple)
+
+def findObj(objName,compileCmds):
+        for cmd in compileCmds:
+                for i in range (0, len(cmd[2])):
+                        if (cmd[2][i] == objName):
+                                return cmd[0], cmd[1][i]
+        return False, False
 
 #Base cmd, lib children, cmd children, dependencies
 def groupChild(cmdGroup):
@@ -477,7 +563,7 @@ def groupChild(cmdGroup):
                                 libIn.append(l)
                 allLibFiles = outputFile
                 if resultCmd[1][3] == "link":
-                        patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,mapName,libIn)
+                        patchVCProjExeDll(prjName,files,exeArgs,cfgType,objOut,outputFile,mapName,libIn)
                 elif resultCmd[1][3] == "lib":
                         patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,outputFile,libIn)
 
@@ -594,6 +680,7 @@ def fixPaths(cmd):
 
 def addExtraDirs(arguments):
         newArg = ""
+        arguments = arguments.split()
         for includeDir in extraIncludeDirs:
                 includeDir.strip()
                 includeDir = includeDir.split("/",1)[1]
@@ -601,7 +688,7 @@ def addExtraDirs(arguments):
                 newArg += " " + includeDir
         
         arguments.append(newArg)
-        return arguments
+        return arguments.join(" ")
 
 def parseDLst(path):
         repStrs = [("%_DEST%","..\solver\\410\\" + buildFolder),("%_EXT%",""),("%__SRC%",buildFolder)]
@@ -800,8 +887,8 @@ def patchSolution(projects,fileName):
         else:
                 print "No projects were found for this solution, so the solution file will not be written"
         outFile.close()
-
-def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,mapName,libIn):
+        
+def patchVCProjExeDll(prjName,files,exeArgs,cfgType,objOut,outputFile,mapName,libIn):
         print "EXE/DLL Project"
         prjName = sanitizeArg(prjName)
         dependencies = []
@@ -826,13 +913,15 @@ def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,
         doMapStr = "^BOOL_DO_MAP^"
         mapFileStr = "^MAP_NAME^"
         outputFileStr = "^OUTPUT_FILE_NAME^"
-        arguments = addExtraDirs(arguments)
+        addStrFull = "<AdditionalOptions Condition=\"'$(Configuration)|$(Platform)'=='Release|Win32'\">^OVERRIDE^ %(AdditionalOptions)</AdditionalOptions>\n"
+        closeCompileStr = "</ClCompile>\n"
+        overrideStr = "^OVERRIDE^"
         ourLib = []
         #Find any files that look like they were generated by this module
-        for l in libIn:
-                if (l.find("/") != -1):
-                        ourLib.append(l)
-        files.extend(ourLib)
+        #for l in libIn:
+        #        if (l.find("/") != -1):
+        #                ourLib.append(l)
+        #files.extend(ourLib)
         if mapName != "":
                 doMap = "true"
         else:
@@ -847,13 +936,25 @@ def patchVCProjExeDll(prjName,files,arguments,exeArgs,cfgType,objOut,outputFile,
         it = origFile.find(compileStr)+len(compileStr)
         end_it = origFile.find(endCompileStr,it)
         compileLine = origFile[it:end_it]
+        openCompileLine = compileLine.replace("/>",">")
         prjId = sanitizeArg(ProjectGUID())
+        maxCount = -1
+        for f in files:
+                if (len(f[1]) > maxCount):
+                        maxCount = len(f[1])
+                        mainArg = f[0]
         fileOut = ""
-        for fName in files:
-                fileOut += compileLine.replace(clFileName,sanitizeArg(fName)) + "\n\t"
+        for f in files:
+                for fName in f[1]:
+                        if (f[0] == mainArg):
+                                fileOut += compileLine.replace(clFileName,sanitizeArg(fName)) + "\n\t"
+                        else:
+                                fileOut += openCompileLine.replace(clFileName,sanitizeArg(fName)) + "\n\t"
+                                fileOut += addStrFull.replace(overrideStr,f[0]) + "\n"
+                                fileOut += closeCompileStr
         origFile = origFile.replace(origFile[it-len(compileStr):end_it+len(endCompileStr)],fileOut)
         origFile = origFile.replace(guidStr,prjId)
-        origFile = origFile.replace(addStr, ' '.join(map(str, arguments)))
+        origFile = origFile.replace(addStr, mainArg)
         origFile = origFile.replace(nameStr,sanitizeArg(prjName))
         origFile = origFile.replace(linkStr,exeArgs)
         origFile = origFile.replace(objStr,sanitizeArg(objOut))
@@ -942,7 +1043,7 @@ def patchVCProjMake(prjName,isPostBuild,buildCmd,rebuildCmd,cleanCmd):
         prjTuple = newName.strip(), prjId, "", dependencies, moduleFileName[moduleFileName.rfind("/")+1:], []
         allProjects.append(prjTuple)        
 
-def patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,libOut,libIn):
+def patchVCProjLib(prjName,files,libArgs,cfgType,objOut,allLibFiles,libOut,libIn):
         #allLibFiles needs to be added as a copy command in postbuild from the
         #output of the original build
         print "Lib project"
@@ -979,27 +1080,41 @@ def patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,libOut,lib
         postStr = "^POSTBUILD^"
         outputFileStr = "^OUTPUT_FILE_NAME^"
         outDirStr = "^OUTDIR^"
+        addStrFull = "<AdditionalOptions Condition=\"'$(Configuration)|$(Platform)'=='Release|Win32'\">^OVERRIDE^ %(AdditionalOptions)</AdditionalOptions>"
+        closeCompileStr = "\t</ClCompile>\n"
+        overrideStr = "^OVERRIDE^"
         targetName = libOut[max(libOut.rfind("/"),libOut.rfind("\\"))+1:libOut.rfind(".")]
         targetNameWExt = libOut[max(libOut.rfind("/"),libOut.rfind("\\"))+1:]
         outputFile = libOut
-        arguments = addExtraDirs(arguments)
+        #arguments = addExtraDirs(arguments)
         f = open(rootFile,"r")
         origFile = f.read()
         f.close()
         it = origFile.find(compileStr)+len(compileStr)
         end_it = origFile.find(endCompileStr,it)
         compileLine = origFile[it:end_it]
-        fileOut = ""
-        for fName in files:
-                fName = fName.replace("\n","")
-                fName = fName.replace("\r","")
-                fileOut += compileLine.replace(clFileName,fName) + "\n\t"
+        openCompileLine = compileLine.replace("/>",">")
         prjId = sanitizeArg(ProjectGUID())
+        maxCount = -1
+        for f in files:
+                if (len(f[1]) > maxCount):
+                        maxCount = len(f[1])
+                        mainArg = f[0]
+        fileOut = ""
+        for f in files:
+                for fName in f[1]:
+                        if (f[0] == mainArg):
+                                fileOut += compileLine.replace(clFileName,sanitizeArg(fName)) + "\n\t"
+                        else:
+                                fileOut += openCompileLine.replace(clFileName,sanitizeArg(fName)) + "\n\t"
+                                fileOut += addStrFull.replace(overrideStr,f[0]) + "\n"
+                                fileOut += closeCompileStr
+        #origFile = origFile.replace(origFile[it-len(compileStr):end_it+len(endCompileStr)],fileOut)
+        origFile = origFile.replace(addStr, mainArg)
         origFile = origFile.replace(origFile[it-len(compileStr):end_it+len(endCompileStr)],sanitizeArg(fileOut))
         origFile = origFile.replace(guidStr,prjId)
         origFile = origFile.replace(preStr,"")
         origFile = origFile.replace(postStr,"")
-        origFile = origFile.replace(addStr, ' '.join(map(str, arguments)))
         origFile = origFile.replace(nameStr,sanitizeArg(prjName))
         origFile = origFile.replace(libStr,sanitizeArg(libArgs))
         origFile = origFile.replace(objStr,sanitizeArg(objOut))
@@ -1009,7 +1124,7 @@ def patchVCProjLib(prjName,files,arguments,libArgs,objOut,allLibFiles,libOut,lib
         print "Lib out: " + libOut
         moduleFileName = os.path.join(moduleName, prjName + ".vcxproj")
         outFile = open(moduleFileName,"w")
-        print moduleFileName
+        #print moduleFileName
         if (len(origFile) > FILESIZE_LIMIT):
                 print "Warning: string size exceeds 500kb, file will not be written"
                 return
