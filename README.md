@@ -20,6 +20,8 @@ A script to convert the LINUX/UNIX AOO build system (modules) to a Windows based
 8. Enter the main directory.
 9. Run the vcGen.py script (format: ```python vcGen.py [moduleName]```).
 
+Notes: Currently only handles calls to link, lib and cl.exe along with the version patching calls. Everything else will have to be done manually: this can be done by moving the output of the existing build system into a Cygwin script in order to handle parts that cannot be easily done on Windows.
+
 ##### Example
 For this example assume:
 

@@ -192,7 +192,7 @@ def ProjectGUID():
         return output
 
 
-def printAndOutput(outputFile, out, indentationLevel):
+def AndOutput(outputFile, out, indentationLevel):
         for i in range(indentationLevel):
                 outputFile.write('\t')
                 print ('\t')
@@ -247,7 +247,7 @@ def parseNext(str,it,lastArgs,inFileGroup,outFileGroup,cmdGroup):
                 in_end_it = out.rfind(" ")
                 in_end_it = out.rfind(" ",0,in_end_it-1)
                 in_it = out.rfind(" ",0,in_end_it-1)+len(" ")
-                inFileName = out[in_it:in_end_it]
+                inFileName = out[in_it:in_end_it].replace("-I","")
                 if args != lastArgs and lastArgs != "":
                         tmp = (lastArgs,inFileGroup,outFileGroup,"cl.exe")
                         if (tmp[1] != [] or tmp[2] != []):
@@ -270,14 +270,21 @@ def parseNext(str,it,lastArgs,inFileGroup,outFileGroup,cmdGroup):
                 tmp_it = str.find("\n",it+1)
                 end_it = str.find("\n",tmp_it+1)
                 tempStr = str[it:end_it]
-                while (tempStr.find(".obj") != -1 or tempStr.find(".lib") != -1):
+                lowIt = float("inf")
+                while ((tempStr.find(".obj") < lowIt and tempStr.find(".obj") != -1) or (tempStr.find(".lib") < lowIt and tempStr.find(".lib") != -1)):
                         tmp_it = end_it
-                        end_it = str.find("\n",tmp_it+1)
+                        end_it = str.find("\n",tmp_it+1)+1
                         tempStr = str[tmp_it:end_it]
+                        spaceIt = tempStr.find(" ")
+                        newLineIt = tempStr.find("\n",1)
+                        if (spaceIt < newLineIt and spaceIt != -1):
+                                lowIt = spaceIt
+                        else:
+                                lowIt = newLineIt
                 #Move back one so we are able to match the following newline
                 #with the link or lib strings
-                end_it = end_it-1
-                out = str[it:tmp_it]
+                end_it = tmp_it
+                out = str[it:end_it]
                 out = fixPaths(out)
                 objs = out.split()
                 tmpObjs = []
@@ -305,6 +312,19 @@ def parseNext(str,it,lastArgs,inFileGroup,outFileGroup,cmdGroup):
                 objList = []
                 tmp_it = str.find("\n",it+1)
                 end_it = str.find("\n",tmp_it+1)
+                tempStr = str[it:end_it]
+                lowIt = float("inf")
+                while ((tempStr.find(".obj") < lowIt and tempStr.find(".obj") != -1) or (tempStr.find(".lib") < lowIt and tempStr.find(".lib") != -1)):
+                        tmp_it = end_it
+                        end_it = str.find("\n",tmp_it+1)
+                        tempStr = str[tmp_it:end_it]
+                        spaceIt = tempStr.find(" ")
+                        newLineIt = tempStr.find("\n",1)
+                        if (spaceIt < newLineIt and spaceIt != -1):
+                                lowIt = spaceIt
+                        else:
+                                lowIt = newLineIt
+                end_it = end_it-1
                 out = str[it:end_it]
                 out = fixPaths(out)
                 tmp_it = out.find("-out:")+len("-out:")
@@ -427,10 +447,13 @@ def groupChildNew(cmdGroup):
         libArgTuple = []
         libTuple = []
         for cmd in linkCmds:
+                linkTuple = []
                 for objName in cmd[1]:
                         if (objName[-4:] != ".obj"):
                                 continue
                         clCmd = (findObj(objName,compileCmds),objName)
+                        if (clCmd[0] == False):
+                                print "Unable to match " ,objName
                         linkTuple = addCmd(clCmd[0],clCmd[1],linkTuple,linkCmds)
                 prjName = cmd[2][0]
                 cfgType = prjName[-3:]
@@ -440,8 +463,11 @@ def groupChildNew(cmdGroup):
                         cfgType = "Application"
                 else:
                         print "Unknown file extension: " + cfgType     
-                objOut = cmd[1][0]
-                objOut = objOut[:objOut.rfind("/")+1]
+                if (len(cmd[1]) > 0):
+                        objOut = cmd[1][0]
+                        objOut = objOut[:objOut.rfind("/")+1]
+                else:
+                        objOut = ""
                 prjName = prjName[prjName.rfind("/")+1:]
                 prjName = prjName.replace("/","_")
                 prjName = prjName.replace(".","_")
@@ -455,15 +481,22 @@ def groupChildNew(cmdGroup):
                 #print linkTuple[maxTuple][1]
                 linkArgTuple.append(linkTuple)
         for cmd in libCmds:
+                libTuple = []
                 for objName in cmd[1]:
+                        print objName
                         if (objName[-4:] != ".obj"):
                                 continue
                         clCmd = (findObj(objName,compileCmds),objName)
+                        if (clCmd[0] == False):
+                                print "Unable to match " ,objName
                         libTuple = addCmd(clCmd[0],clCmd[1],libTuple,libCmds)
                 prjName = cmd[2][0]
                 cfgType = prjName[-3:]
-                objOut = cmd[1][0]
-                objOut = objOut[:objOut.rfind("/")+1]
+                if (len(cmd[1]) > 0):
+                        objOut = cmd[1][0]
+                        objOut = objOut[:objOut.rfind("/")+1]
+                else:
+                        objOut = ""
                 prjName = prjName[prjName.rfind("/")+1:]
                 prjName = prjName.replace("/","_")
                 prjName = prjName.replace(".","_")
@@ -480,7 +513,7 @@ def groupChildNew(cmdGroup):
 def findObj(objName,compileCmds):
         for cmd in compileCmds:
                 for i in range (0, len(cmd[2])):
-                        if (cmd[2][i] == objName):
+                        if (cmd[2][i].replace("../","") == objName.replace("../","")):
                                 return cmd[0], cmd[1][i]
         return False, False
 
@@ -939,6 +972,7 @@ def patchVCProjExeDll(prjName,files,exeArgs,cfgType,objOut,outputFile,mapName,li
         openCompileLine = compileLine.replace("/>",">")
         prjId = sanitizeArg(ProjectGUID())
         maxCount = -1
+        mainArg = ""
         for f in files:
                 if (len(f[1]) > maxCount):
                         maxCount = len(f[1])
@@ -1096,6 +1130,7 @@ def patchVCProjLib(prjName,files,libArgs,cfgType,objOut,allLibFiles,libOut,libIn
         openCompileLine = compileLine.replace("/>",">")
         prjId = sanitizeArg(ProjectGUID())
         maxCount = -1
+        mainArg = ""
         for f in files:
                 if (len(f[1]) > maxCount):
                         maxCount = len(f[1])
@@ -1161,7 +1196,8 @@ def runEveryFolder(startDir):
 if (len(sys.argv) != 2):
         print "Usage: python vcGen.py moduleName\nRun from main AOO directory and have output file in the name <modulename>/<modulename>.txt"
         exit
-moduleName = sys.argv[1]
+#moduleName = sys.argv[1]
+moduleName = "oox"
 print ###############################################
 try:
         os.mkdir(os.getcwd() + "\\" + moduleName)
