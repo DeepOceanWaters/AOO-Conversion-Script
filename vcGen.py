@@ -1196,8 +1196,7 @@ def runEveryFolder(startDir):
 if (len(sys.argv) != 2):
         print "Usage: python vcGen.py moduleName\nRun from main AOO directory and have output file in the name <modulename>/<modulename>.txt"
         exit
-#moduleName = sys.argv[1]
-moduleName = "oox"
+moduleName = sys.argv[1]
 print ###############################################
 try:
         os.mkdir(os.getcwd() + "\\" + moduleName)
